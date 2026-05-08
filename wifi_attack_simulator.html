@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Attack Simulator — CyberLab</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a0f;
+    --bg2: #0a1520;
+    --bg3: #0d1f2d;
+    --green: #00ff88;
+    --green2: #00cc6a;
+    --red: #ff3355;
+    --orange: #ff8800;
+    --blue: #00aaff;
+    --cyan: #00eeff;
+    --yellow: #ffdd00;
+    --text: #c8e6ff;
+    --text2: #6a9fcc;
+    --border: #1a3a52;
+    --panel: rgba(10,25,40,0.95);
+    --glow-green: 0 0 20px rgba(0,255,136,0.4);
+    --glow-red: 0 0 20px rgba(255,51,85,0.4);
+    --glow-blue: 0 0 20px rgba(0,170,255,0.3);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(0,170,255,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(0,255,136,0.03) 0%, transparent 50%);
+  }
+  /* Scanline overlay */
+  body::before {
+    content:'';
+    position:fixed;
+    top:0; left:0; right:0; bottom:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events:none;
+    z-index:9999;
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(90deg, rgba(0,255,136,0.05), rgba(0,170,255,0.05));
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top:0;
+    z-index:100;
+    backdrop-filter: blur(10px);
+  }
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--green);
+    text-shadow: var(--glow-green);
+    letter-spacing: 3px;
+  }
+  .logo span { color: var(--blue); }
+  .hud {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: center; }
+  .hud-label { color: var(--text2); font-size: 0.7rem; letter-spacing: 2px; text-transform: uppercase; }
+  .hud-val { color: var(--yellow); font-size: 1.1rem; font-weight: bold; }
+  .hud-val.green { color: var(--green); }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 300px;
+    min-height: calc(100vh - 64px);
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+  }
+  .sidebar-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: var(--text2);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ATTACK CARDS */
+  .attack-card {
+    background: rgba(10,30,50,0.8);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.85rem;
+    margin-bottom: 0.6rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .attack-card::before {
+    content:'';
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:3px;
+    background: var(--attack-color, var(--blue));
+    opacity:0.7;
+  }
+  .attack-card:hover {
+    border-color: var(--attack-color, var(--blue));
+    background: rgba(0,170,255,0.08);
+    transform: translateX(2px);
+  }
+  .attack-card.active {
+    border-color: var(--attack-color, var(--blue));
+    background: rgba(0,170,255,0.12);
+    box-shadow: var(--glow-blue);
+  }
+  .attack-card.active::before { opacity:1; }
+  .attack-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+  }
+  .attack-tag {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text2);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 1px;
+  }
+  .attack-tag.high { background: rgba(255,51,85,0.15); color: var(--red); }
+  .attack-tag.med  { background: rgba(255,136,0,0.15);  color: var(--orange); }
+  .attack-tag.low  { background: rgba(0,255,136,0.1);  color: var(--green); }
+  .attack-pts {
+    float: right;
+    font-family: 'Orbitron', monospace;
+    font-size: 0.7rem;
+    color: var(--yellow);
+  }
+
+  /* CONTENT AREA */
+  .content {
+    padding: 1.5rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* NETWORK MAP */
+  .network-map {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    height: 280px;
+    position: relative;
+    overflow: hidden;
+  }
+  .map-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    color: var(--text2);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  #netCanvas { width:100%; height:calc(100% - 24px); }
+
+  /* ATTACK DETAIL PANEL */
+  .attack-detail {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+  }
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .detail-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--green);
+    text-shadow: var(--glow-green);
+  }
+  .detail-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 3px;
+  }
+  .detail-desc {
+    color: var(--text2);
+    font-size: 0.9rem;
+    line-height: 1.7;
+    margin-bottom: 1.2rem;
+  }
+
+  /* STEPS */
+  .steps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin-bottom: 1.2rem;
+  }
+  .step-box {
+    background: rgba(0,170,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.8rem;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .step-box.active {
+    border-color: var(--green);
+    background: rgba(0,255,136,0.08);
+    box-shadow: var(--glow-green);
+  }
+  .step-box.done {
+    border-color: var(--text2);
+    opacity: 0.6;
+  }
+  .step-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    color: var(--text2);
+    margin-bottom: 0.4rem;
+    letter-spacing: 2px;
+  }
+  .step-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+  }
+  .step-desc {
+    font-size: 0.75rem;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .step-check {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    color: var(--green);
+    font-size: 1rem;
+    display: none;
+  }
+  .step-box.done .step-check { display: block; }
+
+  /* TERMINAL */
+  .terminal {
+    background: #020a05;
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--green);
+    height: 130px;
+    overflow-y: auto;
+    line-height: 1.7;
+    margin-bottom: 1rem;
+  }
+  .terminal::-webkit-scrollbar { width: 4px; }
+  .terminal::-webkit-scrollbar-thumb { background: var(--green2); }
+  .t-line { display: block; }
+  .t-line.cmd { color: var(--cyan); }
+  .t-line.warn { color: var(--orange); }
+  .t-line.err  { color: var(--red); }
+  .t-line.ok   { color: var(--green); }
+  .t-line.dim  { color: var(--text2); }
+  .t-cursor { animation: blink 1s infinite; color: var(--green); }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  /* CONTROLS */
+  .controls {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+  }
+  .btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 0.6rem 1.2rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid;
+    text-transform: uppercase;
+  }
+  .btn-launch {
+    background: rgba(0,255,136,0.1);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .btn-launch:hover {
+    background: rgba(0,255,136,0.2);
+    box-shadow: var(--glow-green);
+  }
+  .btn-launch:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .btn-reset {
+    background: rgba(255,51,85,0.08);
+    border-color: rgba(255,51,85,0.4);
+    color: var(--red);
+  }
+  .btn-reset:hover {
+    background: rgba(255,51,85,0.15);
+    box-shadow: var(--glow-red);
+  }
+  .btn-defend {
+    background: rgba(0,170,255,0.08);
+    border-color: rgba(0,170,255,0.4);
+    color: var(--blue);
+    margin-left: auto;
+  }
+  .btn-defend:hover {
+    background: rgba(0,170,255,0.15);
+    box-shadow: var(--glow-blue);
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 6px;
+    flex: 1;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green2), var(--green));
+    border-radius: 2px;
+    transition: width 0.3s;
+    box-shadow: var(--glow-green);
+    width: 0%;
+  }
+
+  /* RIGHT PANEL */
+  .right-panel {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+  .panel-section-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    color: var(--text2);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.8rem;
+  }
+
+  /* SCORE BOARD */
+  .score-board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .score-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem;
+  }
+  .score-attack { color: var(--text2); }
+  .score-pts { color: var(--yellow); }
+  .score-pts.earned { color: var(--green); animation: pulse 0.5s; }
+  @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.3)} 100%{transform:scale(1)} }
+
+  /* THREAT LEVEL */
+  .threat-meter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .threat-bar-wrap {
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    height: 8px;
+    overflow: hidden;
+  }
+  .threat-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s;
+  }
+  .threat-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text2);
+  }
+  .threat-val { font-size: 0.72rem; }
+  .threat-val.low  { color: var(--green); }
+  .threat-val.med  { color: var(--orange); }
+  .threat-val.high { color: var(--red); animation: flicker 2s infinite; }
+  @keyframes flicker { 0%,90%,100%{opacity:1} 92%,98%{opacity:0.3} }
+
+  /* DEFENSES */
+  .defense-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .defense-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text2);
+    padding: 0.5rem 0.6rem;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid transparent;
+    transition: all 0.3s;
+  }
+  .defense-item.active {
+    color: var(--green);
+    border-color: rgba(0,255,136,0.2);
+    background: rgba(0,255,136,0.05);
+  }
+  .defense-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .defense-item.active .defense-dot {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: dotblink 2s infinite;
+  }
+  @keyframes dotblink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* QUIZ MODAL */
+  .quiz-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,5,10,0.9);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .quiz-overlay.show { display: flex; }
+  .quiz-box {
+    background: var(--bg3);
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 520px;
+    width: 90%;
+    box-shadow: var(--glow-green);
+    animation: slideIn 0.3s;
+  }
+  @keyframes slideIn { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .quiz-title {
+    font-family: 'Orbitron', monospace;
+    color: var(--green);
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+  }
+  .quiz-q {
+    font-size: 1rem;
+    line-height: 1.7;
+    margin-bottom: 1.2rem;
+    color: var(--text);
+  }
+  .quiz-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1.2rem;
+  }
+  .quiz-opt {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.8rem 1rem;
+    cursor: pointer;
+    font-size: 0.88rem;
+    transition: all 0.2s;
+    color: var(--text2);
+    text-align: left;
+    font-family: 'Exo 2', sans-serif;
+  }
+  .quiz-opt:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,238,255,0.05); }
+  .quiz-opt.correct { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.1); }
+  .quiz-opt.wrong   { border-color: var(--red); color: var(--red); background: rgba(255,51,85,0.1); }
+  .quiz-feedback {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    min-height: 2rem;
+    color: var(--text2);
+    padding: 0.6rem;
+    border-left: 2px solid var(--border);
+    margin-bottom: 1rem;
+  }
+  .quiz-feedback.ok  { border-color: var(--green); color: var(--green); }
+  .quiz-feedback.err { border-color: var(--red); color: var(--orange); }
+
+  /* ACHIEVEMENT toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--bg3);
+    border: 1px solid var(--yellow);
+    border-radius: 6px;
+    padding: 1rem 1.4rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--yellow);
+    z-index: 300;
+    transform: translateX(120%);
+    transition: transform 0.4s;
+    box-shadow: 0 0 20px rgba(255,221,0,0.3);
+  }
+  .toast.show { transform: translateX(0); }
+  .toast-title { font-family: 'Orbitron', monospace; font-size: 0.65rem; letter-spacing:2px; color: var(--text2); margin-bottom:0.3rem; }
+
+  /* RESPONSIVE */
+  @media(max-width:900px){
+    .main { grid-template-columns: 220px 1fr; }
+    .right-panel { display: none; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">CYBER<span>LAB</span> // WiFi Attack Simulator</div>
+  <div class="hud">
+    <div class="hud-item">
+      <span class="hud-label">Puntos</span>
+      <span class="hud-val green" id="totalScore">0</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Ataques</span>
+      <span class="hud-val" id="attacksDone">0/7</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-label">Rango</span>
+      <span class="hud-val" id="rankLabel">Script Kiddie</span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-title">// Vectores de Ataque</div>
+    <div id="attackList"></div>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content">
+    <!-- NETWORK MAP -->
+    <div class="network-map">
+      <div class="map-title">// Red Objetivo — Mapa en Tiempo Real</div>
+      <canvas id="netCanvas"></canvas>
+    </div>
+
+    <!-- ATTACK DETAIL -->
+    <div class="attack-detail" id="detailPanel">
+      <div style="text-align:center; padding:2rem; color:var(--text2); font-family:'Share Tech Mono',monospace; font-size:0.85rem;">
+        <div style="font-size:2rem; margin-bottom:1rem; color:var(--border)">▷</div>
+        Selecciona un vector de ataque del panel izquierdo para comenzar la simulación
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT PANEL -->
+  <aside class="right-panel">
+    <div>
+      <div class="panel-section-title">// Marcador</div>
+      <div class="score-board" id="scoreboard"></div>
+    </div>
+    <div>
+      <div class="panel-section-title">// Nivel de Amenaza</div>
+      <div class="threat-meter">
+        <div class="threat-label">
+          <span>Detección</span>
+          <span class="threat-val" id="threatLabel">BAJO</span>
+        </div>
+        <div class="threat-bar-wrap">
+          <div class="threat-fill" id="threatFill" style="width:5%; background: var(--green);"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="panel-section-title">// Defensas Disponibles</div>
+      <div class="defense-list" id="defenseList"></div>
+    </div>
+    <div>
+      <div class="panel-section-title">// Logros</div>
+      <div id="achievementsList" style="font-size:0.78rem; color:var(--text2); font-family:'Share Tech Mono',monospace; display:flex; flex-direction:column; gap:0.4rem;"></div>
+    </div>
+  </aside>
+</div>
+
+<!-- QUIZ MODAL -->
+<div class="quiz-overlay" id="quizOverlay">
+  <div class="quiz-box">
+    <div class="quiz-title">// Verificación de Conocimiento</div>
+    <div class="quiz-q" id="quizQ"></div>
+    <div class="quiz-options" id="quizOpts"></div>
+    <div class="quiz-feedback" id="quizFeedback"></div>
+    <button class="btn btn-launch" id="quizNextBtn" style="display:none" onclick="closeQuiz()">CONTINUAR ▶</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-title">// LOGRO DESBLOQUEADO</div>
+  <div id="toastMsg"></div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const ATTACKS = [
+  {
+    id:'evil_twin',
+    name:'Evil Twin AP',
+    color:'#ff3355',
+    severity:'high',
+    pts:150,
+    badge:'CRÍTICO',
+    badgeColor:'rgba(255,51,85,0.2)',
+    badgeText:'#ff3355',
+    desc:'Crea un punto de acceso WiFi falso que imita a una red legítima. Las víctimas se conectan creyendo que es la red real, permitiendo interceptar todo su tráfico.',
+    steps:[
+      {n:'01',name:'Reconocimiento', desc:'Escanear redes WiFi cercanas con herramientas como airodump-ng para identificar el SSID objetivo.'},
+      {n:'02',name:'Clonar AP', desc:'Crear un AP falso con el mismo SSID y BSSID usando hostapd o airbase-ng.'},
+      {n:'03',name:'Deauth Attack', desc:'Enviar paquetes de desautenticación para expulsar clientes de la red legítima.'},
+      {n:'04',name:'Captura de tráfico', desc:'Interceptar credenciales y datos usando Wireshark o ettercap en el AP falso.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ airodump-ng wlan0mon --band abg'},
+      {t:'ok',  l:' CH 6 ][ Elapsed: 12s ][ 2024-01-15'},
+      {t:'dim', l:'BSSID              CH  ESSID            AUTH'},
+      {t:'ok',  l:'A4:77:33:XX:XX:XX  6   HomeNetwork_2G   WPA2'},
+      {t:'cmd', l:'$ airbase-ng -a A4:77:33:XX:XX:XX -e "HomeNetwork_2G" wlan0mon'},
+      {t:'ok',  l:'[+] AP "HomeNetwork_2G" creado en CH 6'},
+      {t:'warn', l:'[!] 3 clientes conectados al Evil Twin'},
+      {t:'err',  l:'[!] Capturando credenciales...'},
+    ],
+    quiz:{
+      q:'¿Cuál es la defensa MÁS efectiva contra un ataque Evil Twin?',
+      opts:[
+        'Usar contraseñas WiFi más largas',
+        'Verificar el certificado del portal cautivo y usar VPN siempre',
+        'Conectarse solo a redes con 5 barras de señal',
+        'Desactivar el WiFi cuando no se use'
+      ],
+      correct:1,
+      feedback:'Correcto. Una VPN cifra el tráfico incluso si te conectas a un Evil Twin. Además, verificar el certificado SSL del portal y usar autenticación 802.1X con EAP-TLS previene la conexión a APs falsos.'
+    },
+    defenses:['WPA3-Enterprise / 802.1X','VPN obligatoria','Detección de APs Rogue (WIDS)']
+  },
+  {
+    id:'deauth',
+    name:'Deauth / Desautenticación',
+    color:'#ff8800',
+    severity:'med',
+    pts:100,
+    badge:'ALTO',
+    badgeColor:'rgba(255,136,0,0.15)',
+    badgeText:'#ff8800',
+    desc:'Explota una vulnerabilidad del protocolo 802.11 enviando paquetes de gestión de desautenticación no cifrados. No requiere conocer la contraseña WiFi y causa denegación de servicio.',
+    steps:[
+      {n:'01',name:'Monitor Mode', desc:'Poner la interfaz WiFi en modo monitor para capturar todos los paquetes.'},
+      {n:'02',name:'Identificar objetivo', desc:'Capturar el BSSID del AP y las MAC de los clientes conectados.'},
+      {n:'03',name:'Inyectar paquetes', desc:'Enviar paquetes de desautenticación falsos con la MAC del AP usando aireplay-ng.'},
+      {n:'04',name:'DoS continuo', desc:'Mantener el ataque para capturar el handshake WPA o realizar DoS persistente.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ airmon-ng start wlan0'},
+      {t:'ok',  l:'[+] Interfaz wlan0mon creada'},
+      {t:'cmd', l:'$ aireplay-ng --deauth 0 -a A4:77:33:XX:XX:XX wlan0mon'},
+      {t:'warn', l:'[*] Enviando paquetes deauth (broadcast)...'},
+      {t:'err',  l:'[!] Cliente 00:1A:2B:XX:XX:XX desconectado'},
+      {t:'err',  l:'[!] Cliente F8:CF:C5:XX:XX:XX desconectado'},
+      {t:'ok',  l:'[+] Handshake WPA2 capturado en deauth.cap'},
+    ],
+    quiz:{
+      q:'¿Por qué el ataque de desautenticación funciona incluso en redes WPA2?',
+      opts:[
+        'WPA2 usa cifrado débil para paquetes de gestión',
+        'Los paquetes de gestión 802.11 (Management Frames) no están autenticados ni cifrados en WPA2',
+        'El atacante conoce la clave precompartida',
+        'El router no valida las direcciones MAC'
+      ],
+      correct:1,
+      feedback:'Exacto. En 802.11 (WPA/WPA2), los management frames como deauth y disassoc no requieren autenticación. IEEE 802.11w (Management Frame Protection) resuelve esto cifrando estos paquetes, y WPA3 lo hace obligatorio.'
+    },
+    defenses:['802.11w / MFP (Management Frame Protection)','WPA3','WIDS con detección de deauth masivos']
+  },
+  {
+    id:'handshake',
+    name:'WPA Handshake Capture',
+    color:'#ffdd00',
+    severity:'high',
+    pts:130,
+    badge:'CRÍTICO',
+    badgeColor:'rgba(255,221,0,0.15)',
+    badgeText:'#ffdd00',
+    desc:'Captura el handshake de 4 vías WPA/WPA2 que se produce durante la autenticación y lo somete a ataques de diccionario o fuerza bruta offline para obtener la contraseña.',
+    steps:[
+      {n:'01',name:'Capturar handshake', desc:'Usar airodump-ng y forzar reconexión de clientes con deauth para capturar el 4-way handshake.'},
+      {n:'02',name:'Extraer hash', desc:'El archivo .cap contiene el PMKID/handshake que incluye información derivada de la contraseña.'},
+      {n:'03',name:'Ataque diccionario', desc:'Usar hashcat o aircrack-ng con wordlists (rockyou.txt) para probar contraseñas offline.'},
+      {n:'04',name:'Crackear PSK', desc:'Si la contraseña está en el diccionario o es débil, se obtiene en minutos o segundos con GPU.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ airodump-ng -c 6 --bssid A4:77:33:XX:XX:XX -w capture wlan0mon'},
+      {t:'ok',  l:'[+] Iniciando captura en CH 6...'},
+      {t:'warn', l:'[*] WPA Handshake: A4:77:33:XX:XX:XX'},
+      {t:'cmd', l:'$ hashcat -m 22000 capture.hc22000 rockyou.txt'},
+      {t:'dim', l:'Speed: 45432.8 MH/s (GPU RTX 4090)'},
+      {t:'err',  l:'Dictionary cache hit:  password123'},
+      {t:'ok',  l:'[+] Contraseña encontrada: "password123"'},
+    ],
+    quiz:{
+      q:'¿Qué característica de una contraseña WiFi la hace MÁS resistente al crackeo de handshake?',
+      opts:[
+        'Tener exactamente 8 caracteres',
+        'Usar solo letras mayúsculas',
+        'Ser larga (+20 chars), aleatoria y no encontrarse en diccionarios',
+        'Cambiarla cada mes aunque sea corta'
+      ],
+      correct:2,
+      feedback:'Correcto. El ataque es completamente offline; la longitud y aleatoriedad son claves. Una passphrase de 20+ caracteres aleatoria puede tardar millones de años incluso con hardware dedicado. El cambio periódico ayuda pero no compensa una contraseña débil.'
+    },
+    defenses:['Passphrase +20 chars aleatorio','WPA3-SAE (Simultaneous Authentication of Equals)','802.1X/RADIUS en entornos corporativos']
+  },
+  {
+    id:'pmkid',
+    name:'Ataque PMKID',
+    color:'#aa44ff',
+    severity:'high',
+    pts:140,
+    badge:'CRÍTICO',
+    badgeColor:'rgba(170,68,255,0.15)',
+    badgeText:'#aa44ff',
+    desc:'Técnica de 2018 que permite obtener el PMKID del Access Point sin necesidad de que ningún cliente esté conectado, eliminando la dependencia del handshake y acelerando los ataques.',
+    steps:[
+      {n:'01',name:'Solicitar PMKID', desc:'Usar hcxdumptool para solicitar el PMKID directamente al AP sin esperar reconexiones.'},
+      {n:'02',name:'Extraer PMKID', desc:'El PMKID = HMAC-SHA1-128(PMK, "PMK Name" || AP_MAC || STA_MAC) contiene info de la clave.'},
+      {n:'03',name:'Convertir formato', desc:'Procesar con hcxtools al formato compatible con hashcat (-m 22000).'},
+      {n:'04',name:'Crackeo offline', desc:'Ataque con diccionario o fuerza bruta usando GPU sin necesidad de clientes activos.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ hcxdumptool -i wlan0mon --enable_status=1 -o output.pcapng'},
+      {t:'ok',  l:'[+] PMKID recibido del AP A4:77:33:XX:XX:XX'},
+      {t:'cmd', l:'$ hcxpcapngtool output.pcapng -o hash.hc22000'},
+      {t:'dim', l:'[*] 1 PMKID extraído'},
+      {t:'cmd', l:'$ hashcat -m 22000 hash.hc22000 wordlist.txt'},
+      {t:'err',  l:'Cracked: [A4773300XXXX:wifi123]'},
+    ],
+    quiz:{
+      q:'¿Qué ventaja tiene el ataque PMKID sobre la captura de handshake tradicional?',
+      opts:[
+        'Es más silencioso y difícil de detectar',
+        'No requiere que ningún cliente esté conectado al AP',
+        'Funciona contra WPA3',
+        'No requiere diccionario, solo fuerza bruta'
+      ],
+      correct:1,
+      feedback:'Exacto. El PMKID puede obtenerse del propio AP con una sola trama EAPOL, sin esperar que ningún cliente se autentique. Esto lo hace mucho más rápido de recolectar. WPA3 no es vulnerable porque usa SAE en lugar de PSK.'
+    },
+    defenses:['WPA3-SAE','Contraseñas largas y aleatorias','+20 caracteres en PSK WPA2']
+  },
+  {
+    id:'evil_maid',
+    name:'Rogue DHCP / ARP Poison',
+    color:'#00aaff',
+    severity:'med',
+    pts:110,
+    badge:'ALTO',
+    badgeColor:'rgba(0,170,255,0.15)',
+    badgeText:'#00aaff',
+    desc:'Una vez dentro de la red, el atacante lanza un servidor DHCP falso o envenena la caché ARP para redirigir el tráfico de las víctimas a través de su máquina (Man-in-the-Middle).',
+    steps:[
+      {n:'01',name:'Acceso a la red', desc:'El atacante ya está conectado a la red WiFi objetivo (conoce la clave o explotó otra vuln).'},
+      {n:'02',name:'DHCP Starvation', desc:'Agotar el pool DHCP del router enviando muchas solicitudes con MACs aleatorias.'},
+      {n:'03',name:'Rogue DHCP', desc:'Levantar un servidor DHCP propio que asigna la IP del atacante como gateway y DNS.'},
+      {n:'04',name:'MitM activo', desc:'Interceptar, leer y modificar el tráfico de todos los clientes en tiempo real con mitmproxy.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ yersinia -I  # DHCP Starvation'},
+      {t:'warn', l:'[*] Enviando 1000 DISCOVER con MACs falsas...'},
+      {t:'err',  l:'[!] Pool DHCP del router agotado'},
+      {t:'cmd', l:'$ dnsmasq --dhcp-range=192.168.1.100,200 --dhcp-option=3,192.168.1.66'},
+      {t:'ok',  l:'[+] Rogue DHCP activo. Gateway: 192.168.1.66'},
+      {t:'cmd', l:'$ mitmproxy --mode transparent'},
+      {t:'warn', l:'[!] Interceptando tráfico de 5 hosts...'},
+    ],
+    quiz:{
+      q:'¿Cuál es la defensa más efectiva contra ARP Poisoning en redes WiFi corporativas?',
+      opts:[
+        'Usar direcciones IP estáticas en todos los dispositivos',
+        'Dynamic ARP Inspection (DAI) y DHCP Snooping en switches/APs gestionados',
+        'Desactivar el protocolo ARP',
+        'Usar solo IPv6'
+      ],
+      correct:1,
+      feedback:'Correcto. DHCP Snooping construye una tabla de asignaciones IP-MAC confiables, y DAI valida paquetes ARP contra esa tabla, descartando respuestas ARP maliciosas. Esto se configura en switches gestionados y algunos APs enterprise.'
+    },
+    defenses:['Dynamic ARP Inspection (DAI)','DHCP Snooping','Network segmentation / VLAN','802.1X por cliente']
+  },
+  {
+    id:'pixie',
+    name:'Pixie Dust (WPS Attack)',
+    color:'#00eeff',
+    severity:'high',
+    pts:120,
+    badge:'CRÍTICO',
+    badgeColor:'rgba(0,238,255,0.12)',
+    badgeText:'#00eeff',
+    desc:'Explota una debilidad criptográfica en la implementación del protocolo WPS (Wi-Fi Protected Setup) de muchos routers domésticos, permitiendo obtener el PIN WPS en segundos.',
+    steps:[
+      {n:'01',name:'Detectar WPS', desc:'Escanear APs con WPS habilitado usando wash o airodump-ng para identificar versiones vulnerables.'},
+      {n:'02',name:'Iniciar WPS handshake', desc:'Recolectar los nonces (N1, N2) y el hash Enrollee Hash (E-Hash1, E-Hash2) del router.'},
+      {n:'03',name:'Ataque offline', desc:'Pixie Dust explota que algunos firmwares usan números aleatorios débiles (pseudoaleatorios predecibles).'},
+      {n:'04',name:'Recuperar PIN', desc:'Calcular el PIN WPS en segundos, luego usarlo para extraer la passphrase WPA completa.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ wash -i wlan0mon'},
+      {t:'ok',  l:'A4:77:33:XX:XX:XX  6  -67  1.0  No  HomeRouter'},
+      {t:'cmd', l:'$ reaver -i wlan0mon -b A4:77:33:XX:XX:XX -K 1 -vvv'},
+      {t:'dim', l:'[*] Iniciando ataque Pixie Dust...'},
+      {t:'warn', l:'[*] Recibiendo E-Hash1 y E-Hash2'},
+      {t:'err',  l:'[+] WPS PIN encontrado: 12345670'},
+      {t:'ok',  l:'[+] WPA PSK: "MiRedSegura2024"'},
+    ],
+    quiz:{
+      q:'¿Cómo se protege un router doméstico contra el ataque Pixie Dust?',
+      opts:[
+        'Cambiar la contraseña WiFi frecuentemente',
+        'Deshabilitar completamente WPS en la configuración del router',
+        'Usar WPA3 en lugar de WPA2',
+        'Activar el firewall del router'
+      ],
+      correct:1,
+      feedback:'La solución más simple y efectiva es deshabilitar WPS en la interfaz de administración del router. Actualizar el firmware también puede corregir la implementación vulnerable, pero si WPS no se necesita, es mejor desactivarlo por completo.'
+    },
+    defenses:['Deshabilitar WPS','Actualizar firmware del router','WPA3 (no usa WPS)']
+  },
+  {
+    id:'krack',
+    name:'KRACK Attack',
+    color:'#ff6644',
+    severity:'high',
+    pts:160,
+    badge:'CRÍTICO',
+    badgeColor:'rgba(255,102,68,0.15)',
+    badgeText:'#ff6644',
+    desc:'Key Reinstallation Attack (2017). Explota vulnerabilidades en el handshake de 4 vías de WPA2 para forzar la reinstalación de claves ya usadas, permitiendo descifrar tráfico incluso en redes WPA2.',
+    steps:[
+      {n:'01',name:'Posicionamiento MitM', desc:'El atacante se posiciona entre el cliente y el AP, pudiendo retransmitir y manipular mensajes del handshake.'},
+      {n:'02',name:'Retransmitir Msg3', desc:'Forzar la retransmisión del mensaje 3 del 4-way handshake, haciendo que el cliente reinstale la PTK.'},
+      {n:'03',name:'Nonce reutilizado', desc:'La reinstalación resetea los contadores de replay (nonce), rompiendo la aleatoriedad del cifrado.'},
+      {n:'04',name:'Descifrar tráfico', desc:'Con nonces predecibles, usar ataques de keystream para descifrar paquetes y en algunos casos inyectar tráfico.'},
+    ],
+    terminal:[
+      {t:'cmd', l:'$ git clone https://github.com/vanhoefm/krackattacks-scripts'},
+      {t:'dim', l:'[*] Configurando interfaz MitM entre cliente y AP...'},
+      {t:'warn', l:'[*] Retransmitiendo Msg3 del 4-way handshake'},
+      {t:'err',  l:'[!] Cliente reinstalando PTK con nonce=0'},
+      {t:'warn', l:'[!] Keystream reutilizado detectado'},
+      {t:'err',  l:'[!] Tráfico HTTPS vulnerable si no usa TLS'},
+      {t:'ok',  l:'[*] Ver CVE-2017-13077 para detalles técnicos'},
+    ],
+    quiz:{
+      q:'¿Por qué KRACK es especialmente peligroso aunque la red use WPA2?',
+      opts:[
+        'Porque permite conocer la contraseña WiFi directamente',
+        'Porque rompe el cifrado a nivel de protocolo 802.11, independientemente de la clave usada',
+        'Porque solo afecta a Windows y Android',
+        'Porque requiere que el usuario haga clic en un enlace malicioso'
+      ],
+      correct:1,
+      feedback:'KRACK ataca el protocolo mismo, no la clave. Al forzar la reutilización de nonces, el cifrado TKIP y CCMP se vuelven vulnerables. La defensa es parchear clientes y APs (parches de oct. 2017) y usar HTTPS/TLS para proteger el contenido aunque el WiFi sea comprometido.'
+    },
+    defenses:['Parches de seguridad (oct. 2017+)','WPA3','HTTPS/TLS en todas las conexiones','VPN']
+  },
+];
+
+const DEFENSES = [
+  'WPA3 habilitado','802.11w (MFP)','VPN activa','802.1X/RADIUS',
+  'DAI y DHCP Snooping','WPS deshabilitado','Firmware actualizado','WIDS activo'
+];
+
+const ACHIEVEMENTS = [
+  {id:'first', label:'Primera Sangre', cond: s => s.done >= 1},
+  {id:'half',  label:'Halfway Hacker', cond: s => s.done >= 4},
+  {id:'all',   label:'Red Team Elite', cond: s => s.done >= 7},
+  {id:'score500', label:'Puntuación 500', cond: s => s.score >= 500},
+  {id:'perfect', label:'Respuesta Perfecta', cond: s => s.correctAnswers >= 3},
+];
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  score: 0,
+  done: 0,
+  completedAttacks: new Set(),
+  correctAnswers: 0,
+  activeAttack: null,
+  quizAnswered: false,
+  attackRunning: false,
+  threatLevel: 5,
+  activeDefenses: new Set(),
+  unlockedAchievements: new Set(),
+  scores: {},
+};
+
+ATTACKS.forEach(a => { state.scores[a.id] = 0; });
+
+const RANKS = [
+  [0,'Script Kiddie'],[200,'Pentester Jr'],[400,'Red Teamer'],[700,'Senior Analyst'],[1000,'Elite Hacker']
+];
+
+// ============================================================
+// NETWORK CANVAS
+// ============================================================
+const canvas = document.getElementById('netCanvas');
+const ctx = canvas.getContext('2d');
+let animFrame;
+let packets = [];
+let attackPackets = [];
+
+function resizeCanvas(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width  = rect.width;
+  canvas.height = rect.height - 30;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const NODES = {
+  router:  {x:0.5, y:0.35, label:'AP/Router', color:'#00ff88', r:22},
+  victim1: {x:0.2, y:0.7,  label:'Víctima 1', color:'#00aaff', r:16},
+  victim2: {x:0.4, y:0.8,  label:'Víctima 2', color:'#00aaff', r:16},
+  victim3: {x:0.65,y:0.75, label:'Víctima 3', color:'#00aaff', r:16},
+  internet:{x:0.5, y:0.1,  label:'Internet',  color:'#6a9fcc', r:18},
+  attacker:{x:0.85,y:0.45, label:'Atacante',  color:'#ff3355', r:18},
+};
+
+function drawNetwork(t){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const w=canvas.width, h=canvas.height;
+
+  // Draw links
+  const links = [
+    ['router','victim1'],['router','victim2'],['router','victim3'],
+    ['router','internet'],
+  ];
+  links.forEach(([a,b])=>{
+    const n1=NODES[a], n2=NODES[b];
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(26,58,82,0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4,6]);
+    ctx.moveTo(n1.x*w, n1.y*h);
+    ctx.lineTo(n2.x*w, n2.y*h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Attacker dashed line (red)
+  if(state.activeAttack){
+    const r = NODES.router;
+    const a = NODES.attacker;
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,51,85,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3,5]);
+    ctx.moveTo(a.x*w, a.y*h);
+    ctx.lineTo(r.x*w, r.y*h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Animate packets
+  attackPackets = attackPackets.filter(p=>{
+    p.progress += p.speed;
+    if(p.progress >= 1) return false;
+    const x = p.x0 + (p.x1-p.x0)*p.progress;
+    const y = p.y0 + (p.y1-p.y0)*p.progress;
+    ctx.beginPath();
+    ctx.arc(x*w, y*h, p.r, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    return true;
+  });
+
+  // Draw nodes
+  Object.entries(NODES).forEach(([key,n])=>{
+    const x=n.x*w, y=n.y*h;
+    // glow
+    const grad = ctx.createRadialGradient(x,y,0,x,y,n.r*1.8);
+    grad.addColorStop(0, n.color+'33');
+    grad.addColorStop(1, 'transparent');
+    ctx.beginPath(); ctx.arc(x,y,n.r*1.8,0,Math.PI*2);
+    ctx.fillStyle = grad; ctx.fill();
+    // circle
+    ctx.beginPath(); ctx.arc(x,y,n.r,0,Math.PI*2);
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = key==='attacker' && state.activeAttack ? 2.5 : 1.5;
+    ctx.fillStyle = 'rgba(5,10,15,0.9)';
+    ctx.fill(); ctx.stroke();
+    // icon
+    ctx.fillStyle = n.color;
+    ctx.font = `${n.r*0.7}px Share Tech Mono`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(key==='router'?'AP':key==='internet'?'NET':key==='attacker'?'ATK':'PC', x, y);
+    // label
+    ctx.fillStyle = '#6a9fcc';
+    ctx.font = '9px Share Tech Mono';
+    ctx.fillText(n.label, x, y+n.r+10);
+  });
+
+  animFrame = requestAnimationFrame(()=>drawNetwork(Date.now()));
+}
+drawNetwork(Date.now());
+
+function spawnPackets(attackId){
+  const w=canvas.width, h=canvas.height;
+  const targets = ['victim1','victim2','victim3'];
+  const color = ATTACKS.find(a=>a.id===attackId)?.color || '#ff3355';
+  setInterval(()=>{
+    if(!state.attackRunning) return;
+    const tgt = targets[Math.floor(Math.random()*targets.length)];
+    const n = NODES[tgt];
+    attackPackets.push({
+      x0: NODES.attacker.x, y0: NODES.attacker.y,
+      x1: NODES.router.x,   y1: NODES.router.y,
+      progress:0, speed:0.015+Math.random()*0.01,
+      color, r:3
+    });
+    if(Math.random()>0.5){
+      attackPackets.push({
+        x0: NODES.router.x, y0: NODES.router.y,
+        x1: n.x, y1: n.y,
+        progress:0, speed:0.02+Math.random()*0.01,
+        color:'#00aaff', r:2
+      });
+    }
+  },180);
+}
+
+// ============================================================
+// RENDER ATTACK LIST
+// ============================================================
+function renderAttackList(){
+  const container = document.getElementById('attackList');
+  container.innerHTML = ATTACKS.map(a=>`
+    <div class="attack-card ${state.activeAttack===a.id?'active':''}"
+         style="--attack-color:${a.color}"
+         onclick="selectAttack('${a.id}')">
+      <div class="attack-pts">${state.completedAttacks.has(a.id)?'✓ '+state.scores[a.id]+'pts':'+'+ a.pts+'pts'}</div>
+      <div class="attack-name">${state.completedAttacks.has(a.id)?'✓ ':''} ${a.name}</div>
+      <span class="attack-tag ${a.severity}">${a.badge}</span>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// RENDER RIGHT PANEL
+// ============================================================
+function renderRightPanel(){
+  // Scoreboard
+  document.getElementById('scoreboard').innerHTML = ATTACKS.map(a=>`
+    <div class="score-row">
+      <span class="score-attack">${a.name.slice(0,18)}</span>
+      <span class="score-pts ${state.scores[a.id]>0?'earned':''}">${state.scores[a.id] || '--'}</span>
+    </div>
+  `).join('');
+
+  // Threat
+  const pct = Math.min(100, state.threatLevel);
+  const fill = document.getElementById('threatFill');
+  const lbl  = document.getElementById('threatLabel');
+  fill.style.width = pct+'%';
+  if(pct < 33){ fill.style.background = '#00ff88'; lbl.textContent='BAJO'; lbl.className='threat-val low'; }
+  else if(pct < 66){ fill.style.background = '#ff8800'; lbl.textContent='MEDIO'; lbl.className='threat-val med'; }
+  else { fill.style.background = '#ff3355'; lbl.textContent='ALTO'; lbl.className='threat-val high'; }
+
+  // Defenses
+  document.getElementById('defenseList').innerHTML = DEFENSES.map(d=>`
+    <div class="defense-item ${state.activeDefenses.has(d)?'active':''}">
+      <div class="defense-dot"></div>${d}
+    </div>
+  `).join('');
+
+  // Achievements
+  document.getElementById('achievementsList').innerHTML = ACHIEVEMENTS.map(a=>`
+    <div style="color:${state.unlockedAchievements.has(a.id)?'#ffdd00':'rgba(255,255,255,0.2)'}">
+      ${state.unlockedAchievements.has(a.id)?'★':'☆'} ${a.label}
+    </div>
+  `).join('');
+
+  // HUD
+  document.getElementById('totalScore').textContent = state.score;
+  document.getElementById('attacksDone').textContent = state.done+'/7';
+  const rank = RANKS.filter(r=>state.score>=r[0]).pop();
+  document.getElementById('rankLabel').textContent = rank[1];
+}
+
+// ============================================================
+// RENDER DETAIL
+// ============================================================
+function renderDetail(attack){
+  const panel = document.getElementById('detailPanel');
+  const completed = state.completedAttacks.has(attack.id);
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title" style="color:${attack.color}; text-shadow: 0 0 20px ${attack.color}66">${attack.name}</div>
+      <span class="detail-badge" style="background:${attack.badgeColor}; color:${attack.badgeText}">${attack.badge}</span>
+    </div>
+    <div class="detail-desc">${attack.desc}</div>
+    <div class="steps-grid" id="stepsGrid">
+      ${attack.steps.map((s,i)=>`
+        <div class="step-box" id="step-${i}">
+          <span class="step-check">✓</span>
+          <div class="step-num">PASO ${s.n}</div>
+          <div class="step-name">${s.name}</div>
+          <div class="step-desc">${s.desc}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="terminal" id="terminal">
+      <span class="t-line dim">// Terminal lista. Ejecuta el ataque para ver la simulación...</span><br>
+      <span class="t-cursor">█</span>
+    </div>
+    <div class="controls">
+      <button class="btn btn-launch" id="btnLaunch" onclick="launchAttack('${attack.id}')" ${completed||state.attackRunning?'disabled':''}>
+        ${completed ? '✓ COMPLETADO' : '▶ EJECUTAR ATAQUE'}
+      </button>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <button class="btn btn-reset" onclick="resetAttack()">↺ RESET</button>
+      <button class="btn btn-defend" onclick="showDefenses('${attack.id}')">⚡ VER DEFENSAS</button>
+    </div>
+  `;
+
+  if(completed){
+    attack.steps.forEach((_,i)=>{
+      document.getElementById('step-'+i)?.classList.add('done');
+    });
+  }
+}
+
+// ============================================================
+// SELECT ATTACK
+// ============================================================
+function selectAttack(id){
+  if(state.attackRunning) return;
+  state.activeAttack = id;
+  const attack = ATTACKS.find(a=>a.id===id);
+  renderAttackList();
+  renderDetail(attack);
+}
+
+// ============================================================
+// LAUNCH ATTACK
+// ============================================================
+function launchAttack(id){
+  if(state.attackRunning || state.completedAttacks.has(id)) return;
+  state.attackRunning = true;
+  const attack = ATTACKS.find(a=>a.id===id);
+  document.getElementById('btnLaunch').disabled = true;
+  document.getElementById('btnLaunch').textContent = '⟳ EJECUTANDO...';
+
+  // Spawn visual packets
+  const spawnInterval = setInterval(()=>{
+    const color = attack.color;
+    attackPackets.push({
+      x0: NODES.attacker.x, y0: NODES.attacker.y,
+      x1: NODES.router.x,   y1: NODES.router.y,
+      progress:0, speed:0.018+Math.random()*0.01, color, r:3
+    });
+  }, 200);
+
+  const terminal = document.getElementById('terminal');
+  terminal.innerHTML = '';
+  const progress = document.getElementById('progressFill');
+
+  let step = 0;
+  const totalSteps = attack.steps.length;
+  let termLine = 0;
+  const termLines = attack.terminal;
+
+  // Animate terminal
+  function addTermLine(){
+    if(termLine >= termLines.length) return;
+    const l = termLines[termLine++];
+    const span = document.createElement('span');
+    span.className = 't-line '+l.t;
+    span.textContent = l.l;
+    terminal.appendChild(span);
+    terminal.appendChild(document.createElement('br'));
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  const termTimer = setInterval(()=>{
+    if(termLine < termLines.length) addTermLine();
+    else clearInterval(termTimer);
+  }, 600);
+
+  // Animate steps
+  function nextStep(){
+    if(step >= totalSteps){
+      // Done!
+      clearInterval(spawnInterval);
+      state.attackRunning = false;
+      state.completedAttacks.add(id);
+      state.done++;
+      // Score
+      const pts = attack.pts;
+      state.scores[id] = pts;
+      state.score += pts;
+      state.threatLevel = Math.min(100, state.threatLevel + 12 + Math.random()*8);
+      // Activate defenses
+      attack.defenses.forEach(d => {
+        if(DEFENSES.includes(d)) state.activeDefenses.add(d);
+      });
+      renderAttackList();
+      renderRightPanel();
+      // Quiz
+      setTimeout(()=>{ showQuiz(attack); }, 800);
+      return;
+    }
+    document.getElementById('step-'+step)?.classList.add('active');
+    progress.style.width = ((step+1)/totalSteps*100)+'%';
+    setTimeout(()=>{
+      document.getElementById('step-'+step)?.classList.remove('active');
+      document.getElementById('step-'+step)?.classList.add('done');
+      step++;
+      nextStep();
+    }, 900);
+  }
+  nextStep();
+}
+
+// ============================================================
+// RESET
+// ============================================================
+function resetAttack(){
+  state.attackRunning = false;
+  attackPackets = [];
+  if(state.activeAttack){
+    const attack = ATTACKS.find(a=>a.id===state.activeAttack);
+    renderDetail(attack);
+  }
+}
+
+// ============================================================
+// QUIZ
+// ============================================================
+let currentQuiz = null;
+function showQuiz(attack){
+  currentQuiz = attack.quiz;
+  document.getElementById('quizQ').textContent = attack.quiz.q;
+  document.getElementById('quizFeedback').textContent = '';
+  document.getElementById('quizFeedback').className = 'quiz-feedback';
+  document.getElementById('quizNextBtn').style.display = 'none';
+  state.quizAnswered = false;
+
+  const opts = document.getElementById('quizOpts');
+  opts.innerHTML = attack.quiz.opts.map((o,i)=>`
+    <button class="quiz-opt" onclick="answerQuiz(${i})">${o}</button>
+  `).join('');
+  document.getElementById('quizOverlay').classList.add('show');
+}
+
+function answerQuiz(idx){
+  if(state.quizAnswered) return;
+  state.quizAnswered = true;
+  const q = currentQuiz;
+  const opts = document.querySelectorAll('.quiz-opt');
+  opts.forEach((o,i)=>{
+    o.disabled = true;
+    if(i===q.correct) o.classList.add('correct');
+    else if(i===idx) o.classList.add('wrong');
+  });
+  const fb = document.getElementById('quizFeedback');
+  if(idx===q.correct){
+    state.correctAnswers++;
+    const bonus = 50;
+    state.score += bonus;
+    fb.textContent = `✓ Correcto! +${bonus} puntos de bonus. ${q.feedback}`;
+    fb.className = 'quiz-feedback ok';
+  } else {
+    fb.textContent = `✗ Incorrecto. ${q.feedback}`;
+    fb.className = 'quiz-feedback err';
+  }
+  document.getElementById('quizNextBtn').style.display = 'block';
+  checkAchievements();
+  renderRightPanel();
+}
+
+function closeQuiz(){
+  document.getElementById('quizOverlay').classList.remove('show');
+  checkAchievements();
+}
+
+// ============================================================
+// DEFENSES PANEL (quick info)
+// ============================================================
+function showDefenses(id){
+  const attack = ATTACKS.find(a=>a.id===id);
+  const msg = `Defensas contra "${attack.name}":\n\n` + attack.defenses.join('\n');
+  // Show as terminal message
+  const terminal = document.getElementById('terminal');
+  if(!terminal) return;
+  const d = document.createElement('span');
+  d.className = 't-line ok';
+  d.textContent = '// Defensas recomendadas: ' + attack.defenses.join(' | ');
+  terminal.appendChild(d);
+  terminal.appendChild(document.createElement('br'));
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+// ============================================================
+// ACHIEVEMENTS
+// ============================================================
+function checkAchievements(){
+  ACHIEVEMENTS.forEach(a=>{
+    if(!state.unlockedAchievements.has(a.id) && a.cond(state)){
+      state.unlockedAchievements.add(a.id);
+      showToast(a.label);
+    }
+  });
+  renderRightPanel();
+}
+
+function showToast(msg){
+  const toast = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'), 3500);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+renderAttackList();
+renderRightPanel();
+</script>
+</body>
+</html>
